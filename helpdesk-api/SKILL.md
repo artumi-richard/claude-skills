@@ -32,31 +32,11 @@ Use `$HELPDESK` in place of `helpdesk` below in case it isn't on `PATH` yet (the
 
 ## Authentication
 
-The API key lives at `~/vault/.helpdesk-artumi.com-key`. That directory is an encrypted vault
-mount and **may not be mounted** in the current session.
+The `helpdesk` CLI manages its own API key (persisted in `~/.config/helpdesk-cli/config.json`) —
+just call commands directly, no need to read the vault or set `HELPDESK_API_KEY` yourself.
 
-```bash
-export HELPDESK_API_KEY=$(cat ~/vault/.helpdesk-artumi.com-key 2>/dev/null | head -1)
-```
-
-If the file isn't there or is empty, the vault is locked — tell the user, verbatim:
-
-> UNLOCK TEH VAULT
-
-...then wait for them to mount it before retrying. Don't guess at the key or invent a
-workaround.
-
-Read the key fresh each time rather than caching it in the conversation, and never print the
-raw key value in output. Set it via the `HELPDESK_API_KEY` env var for each invocation rather
-than `helpdesk auth login --key ...` — login persists the key to
-`~/.config/helpdesk-cli/config.json` on disk, which outlives this conversation and isn't
-necessary here.
-
-You can sanity-check a key without hitting a real ticket:
-
-```bash
-HELPDESK_API_KEY=$HELPDESK_API_KEY $HELPDESK auth status
-```
+If a command fails with an auth error, run `$HELPDESK auth status` to check, and surface
+whatever it reports to the user rather than trying to source or export a key manually.
 
 ## Disambiguation
 
@@ -180,5 +160,6 @@ claimed and by whom (`yes (you)` vs `yes`), without having to inspect the raw `w
 The CLI prints `Error (CODE): message` to stderr and exits 1 on API errors. `401`-class errors
 mean the key is missing/invalid, `403` a permissions issue on the queue, `404` the id doesn't
 exist or isn't visible to this key's user, `400` a malformed request. Surface the message to the
-user rather than just the exit code. `AbstractApiCommand` prints a clear "No API key configured"
-message (exit 1) if `HELPDESK_API_KEY` wasn't set — treat that the same as a locked vault.
+user rather than just the exit code. If no key is configured, the CLI prints a clear "No API key
+configured" message (exit 1) — tell the user to run `helpdesk auth login` rather than trying to
+source a key yourself.
