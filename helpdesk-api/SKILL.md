@@ -23,19 +23,15 @@ wraps the same REST API; full HTTP-level reference (fields, error codes, example
 
 ## Locating the binary
 
-```bash
-HELPDESK=$(command -v helpdesk || echo ~/github.com/Artumi-Systems-Ltd/helpdesk-cli/bin/helpdesk)
-```
-
-Use `$HELPDESK` in place of `helpdesk` below in case it isn't on `PATH` yet (the repo's
-`install.sh` symlinks it to `~/bin/helpdesk`).
+The CLI is symlinked at `~/bin/helpdesk`. Just call `helpdesk` directly — no need to probe
+`PATH` or fall back to the repo path first.
 
 ## Authentication
 
 The `helpdesk` CLI manages its own API key (persisted in `~/.config/helpdesk-cli/config.json`) —
 just call commands directly, no need to read the vault or set `HELPDESK_API_KEY` yourself.
 
-If a command fails with an auth error, run `$HELPDESK auth status` to check, and surface
+If a command fails with an auth error, run `helpdesk auth status` to check, and surface
 whatever it reports to the user rather than trying to source or export a key manually.
 
 ## Disambiguation
@@ -60,20 +56,20 @@ internally) — no need to strip the letter prefix yourself.
 Get a ticket by id:
 
 ```bash
-$HELPDESK issue view ART4290
+helpdesk issue view ART4290
 ```
 
 List issues in a queue (needs at least one of `--queue`, `--client`, `--tag`, `--worked-by`; add
 `--limit=N` to cap results, default 50 max 200):
 
 ```bash
-$HELPDESK issue list --queue=44
+helpdesk issue list --queue=44
 ```
 
 Reply to a ticket (markdown body):
 
 ```bash
-$HELPDESK issue comment 4290 --body="Reply text here."
+helpdesk issue comment 4290 --body="Reply text here."
 ```
 
 Reply and close/change status in the same call — `--status` is a word (case-insensitive), not a
@@ -81,7 +77,7 @@ number; check the ticket's `status` field via `issue view` first if you're unsur
 wording (e.g. "Fixed", "Cant fix", "Wont fix", "Wishlist", "Duplicate", "Old"):
 
 ```bash
-$HELPDESK issue comment 4290 --body="Fixed and confirmed working." --status="Fixed"
+helpdesk issue comment 4290 --body="Fixed and confirmed working." --status="Fixed"
 ```
 
 `issue comment` also takes `--queue=NAME` to move the ticket to another queue while replying.
@@ -91,13 +87,13 @@ Change status/priority/owner without adding a reply — `--priority` is also a w
 `--remove-owner` to clear the owner:
 
 ```bash
-$HELPDESK issue edit 4290 --status="Fixed" --priority="Critical" --owner="jdoe"
+helpdesk issue edit 4290 --status="Fixed" --priority="Critical" --owner="jdoe"
 ```
 
 Create a new ticket — `--queue` is the queue's name (case-insensitive), not its numeric id:
 
 ```bash
-$HELPDESK issue create --title="Title" --body="Opening message" --queue="Support"
+helpdesk issue create --title="Title" --body="Opening message" --queue="Support"
 ```
 
 Optional flags on `issue create`: `--client=ID`, `--priority=P`, `--owner=USER`,
@@ -109,7 +105,7 @@ case-managing it) isn't settable via `issue edit` — it has its own pick-up/dro
 Pick up a ticket before working on it — claims `worker_id` for the API key's user:
 
 ```bash
-$HELPDESK issue pickup 4290
+helpdesk issue pickup 4290
 ```
 
 If someone else already has it, the CLI exits with status 1 and prints a message to stderr
@@ -118,14 +114,14 @@ else is already working the ticket and let them decide. Only steal if they expli
 take it over (e.g. that person is out/gone):
 
 ```bash
-$HELPDESK issue pickup 4290 --steal
+helpdesk issue pickup 4290 --steal
 ```
 
 Drop it when you're done (also happens automatically if you close the ticket — any status change
 away from `"Open"` clears `worker_id` for you):
 
 ```bash
-$HELPDESK issue drop 4290
+helpdesk issue drop 4290
 ```
 
 The "Worked:" line in `issue view`/`issue edit`/etc. output tells you whether a ticket is
