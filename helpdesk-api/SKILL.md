@@ -153,18 +153,25 @@ claimed and by whom (`yes (you)` vs `yes`), without having to inspect the raw `w
 
 ## Workflow for "get ticket N and work on it"
 
-1. `issue view N` to fetch full details (status, priority, owner, worked, timestamps, messages).
-2. Summarize the ticket for the user in plain language before taking any action — don't reply
-   or change status unprompted.
-3. When you start working on a ticket you must run `issue pickup N` first, before
-   replying/closing/reassigning — this is what "working on a ticket" means to the API and
-   prevents someone else picking it up underneath you. Skip this for read-only asks ("what's the
-   status of ART4290?").
+1. If the user is asking you to work the ticket (as opposed to a pure read-only question like
+   "what's the status of ART4290?"), run `issue pickup N` **first, immediately** — before
+   fetching details, reading, thinking about, or deciding anything about the ticket. "Work the
+   ticket"/"pick up ART4290"/"look into ART4290 and fix it" all count; a bare "what does
+   ART4290 say?" does not. Picking up early is what claims the ticket for you and prevents
+   someone else from picking it up underneath you while you're still forming an understanding of
+   the issue — don't wait until you're ready to comment or change status to do this.
    - If pickup fails (exit 1, "already being worked by another user"), tell the user who's
-     already on it (from the `issue view` output) rather than stealing automatically.
-4. When the user decides what to do (reply, reassign owner, close, reprioritize), run the
+     already on it (from the `issue view` output, fetched next) rather than stealing
+     automatically.
+2. `issue view N` to fetch full details (status, priority, owner, worked, timestamps, messages).
+3. Summarize the ticket for the user in plain language before taking any other action — don't
+   reply or change status unprompted.
+4. If, after understanding the ticket, it turns out this isn't something you can actually do
+   (out of scope, needs info/access you don't have, unclear what's being asked, etc.), run
+   `issue drop N` and tell the user why, rather than leaving it claimed while idle.
+5. When the user decides what to do (reply, reassign owner, close, reprioritize), run the
    corresponding command and show the resulting issue output back so they can confirm it worked.
-5. Replying and changing status/queue can be done in one `issue comment` call — prefer that
+6. Replying and changing status/queue can be done in one `issue comment` call — prefer that
    over two separate commands when the user wants both. Closing the ticket this way also drops
    `worker_id` automatically, so there's no need for a separate `issue drop` call in that case.
 
