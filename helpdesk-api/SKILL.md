@@ -153,7 +153,7 @@ whether a ticket is claimed and by whom, without having to inspect the raw `work
 1. `GET /api/issues?id=N` to fetch full details (status, priority, owner, worked/worker, timestamps).
 2. Summarize the ticket for the user in plain language before taking any action — don't reply
    or change status unprompted.
-3. Once the user decides to actually act on the ticket (not just look at it), `POST
+3. When you start working on a ticket you must  `POST
    /api/issues/{id}/pickup` first, before replying/closing/reassigning — this is what "working on
    a ticket" means to the API and prevents someone else picking it up underneath you. Skip this
    for read-only asks ("what's the status of ART4290?").
