@@ -3,14 +3,15 @@ name: helpdesk-api
 description: >-
   Interact with the live helpdesk.artumi.com ticketing system via its HTTP
   API — fetch a ticket/issue by number, list issues for a client/queue/tag,
-  reply to a ticket, and change its status/priority/worker. Use whenever the
-  user references a ticket code like "ART1234" (unambiguous — always this
-  system), or explicitly says "helpdesk"/"helpdesk ticket". A bare number or
-  the word "ticket"/"issue" alone is NOT enough to trigger this in a project
-  that has its own tracker (GitHub issues, Jira, etc.) — see Disambiguation
-  below. Works from any project, not just the helpdesk app's own repo.
-  Distinct from working on the helpdesk app's source code — this is for
-  using the deployed app as an end user would, through its API.
+  pick up/drop a ticket's worker, reply to a ticket, and change its
+  status/priority/owner/queue. Use
+  whenever the user references a ticket code like "ART1234" (unambiguous —
+  always this system), or explicitly says "helpdesk"/"helpdesk ticket". A
+  bare number or the word "ticket"/"issue" alone is NOT enough to trigger
+  this in a project that has its own tracker (GitHub issues, Jira, etc.) —
+  see Disambiguation below. Works from any project, not just the helpdesk
+  app's own repo. Distinct from working on the helpdesk app's source code —
+  this is for using the deployed app as an end user would, through its API.
 ---
 
 # Helpdesk API
@@ -84,46 +85,85 @@ curl -s -X POST \
   "https://helpdesk.artumi.com/api/issues/4290/messages"
 ```
 
-Reply and close/change status in the same call — check the ticket's `status_label` values via a
-`GET` first to find the right numeric status to move to:
+Reply and close/change status in the same call — `status` is a word (case-insensitive), not a
+number; check the ticket's `status` field via a `GET` first if you're unsure of the exact wording
+(e.g. "Fixed", "Cant fix", "Wont fix", "Wishlist", "Duplicate", "Old"):
 
 ```bash
 curl -s -X POST \
   -H "Authorization: Bearer $API_KEY" \
   -H "Content-Type: application/json" \
-  -d '{"body":"Fixed and confirmed working.","status":2}' \
+  -d '{"body":"Fixed and confirmed working.","status":"Fixed"}' \
   "https://helpdesk.artumi.com/api/issues/4290/messages"
 ```
 
-Change status/priority/worker without adding a reply:
+Change status/priority/owner without adding a reply — `priority` is also a word
+(Low/Medium/High/Critical), and `owner` takes a username, not a numeric id:
 
 ```bash
 curl -s -X PATCH \
   -H "Authorization: Bearer $API_KEY" \
   -H "Content-Type: application/json" \
-  -d '{"status":2,"priority":4}' \
+  -d '{"status":"Fixed","priority":"Critical","owner":"jdoe"}' \
   "https://helpdesk.artumi.com/api/issues?id=4290"
 ```
 
-Create a new ticket:
+Create a new ticket — `queueid` is the queue's name (case-insensitive), not its numeric id:
 
 ```bash
 curl -s -X POST \
   -H "Authorization: Bearer $API_KEY" \
   -H "Content-Type: application/json" \
-  -d '{"issuename":"Title","body":"Opening message","queueid":44}' \
+  -d '{"issuename":"Title","body":"Opening message","queueid":"Support"}' \
   "https://helpdesk.artumi.com/api/issues"
 ```
 
+`worker_id` (who is actively working the ticket right now, distinct from `owner_id` who's
+case-managing it) is not settable via `PATCH` — it has its own pick-up/drop endpoints:
+
+Pick up a ticket before working on it — claims `worker_id` for the API key's user:
+
+```bash
+curl -s -X POST -H "Authorization: Bearer $API_KEY" \
+  "https://helpdesk.artumi.com/api/issues/4290/pickup"
+```
+
+If someone else already has it, this returns `409 conflict` rather than clobbering their claim.
+Don't silently retry with `steal` — tell the user someone else is already working the ticket and
+let them decide. Only steal if they explicitly say to take it over (e.g. that person is out/gone):
+
+```bash
+curl -s -X POST -H "Authorization: Bearer $API_KEY" -H "Content-Type: application/json" \
+  -d '{"steal":true}' "https://helpdesk.artumi.com/api/issues/4290/pickup"
+```
+
+Drop it when you're done (also happens automatically if you close the ticket — any status change
+away from `"Open"` clears `worker_id` for you):
+
+```bash
+curl -s -X POST -H "Authorization: Bearer $API_KEY" \
+  "https://helpdesk.artumi.com/api/issues/4290/drop"
+```
+
+A `GET`/`POST`/`PATCH` response's `worked` (bool) and `worked_by_you` (bool) fields tell you
+whether a ticket is claimed and by whom, without having to inspect the raw `worker_id`.
+
 ## Workflow for "get ticket N and work on it"
 
-1. `GET /api/issues?id=N` to fetch full details (status, priority, worker, timestamps).
+1. `GET /api/issues?id=N` to fetch full details (status, priority, owner, worked/worker, timestamps).
 2. Summarize the ticket for the user in plain language before taking any action — don't reply
    or change status unprompted.
-3. When the user decides what to do (reply, reassign, close, reprioritize), make the
+3. Once the user decides to actually act on the ticket (not just look at it), `POST
+   /api/issues/{id}/pickup` first, before replying/closing/reassigning — this is what "working on
+   a ticket" means to the API and prevents someone else picking it up underneath you. Skip this
+   for read-only asks ("what's the status of ART4290?").
+   - If pickup 409s, tell the user who's already on it (from the `GET`) rather than stealing
+     automatically.
+4. When the user decides what to do (reply, reassign owner, close, reprioritize), make the
    corresponding call and show the resulting `issue` object back so they can confirm it worked.
-4. Replying and changing status/queue can be done in one `POST /messages` call — prefer that
-   over two separate requests when the user wants both.
+5. Replying and changing status/queue can be done in one `POST /messages` call — prefer that
+   over two separate requests when the user wants both. Closing the ticket this way also drops
+   `worker_id` automatically, so there's no need for a separate `drop` call in that case.
 
 ## Errors
 

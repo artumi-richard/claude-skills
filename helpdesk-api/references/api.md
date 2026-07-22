@@ -1,9 +1,10 @@
 # Issues API
 
 HTTP API for issues (tickets). Supports fetching issues (`GET /api/issues`),
-creating a new issue (`POST /api/issues`), updating an issue's worker, status
-or priority (`PATCH /api/issues`), and adding a reply to an existing issue
-(`POST /api/issues/{id}/messages`).
+creating a new issue (`POST /api/issues`), updating an issue's status,
+priority or owner (`PATCH /api/issues`), picking up or dropping an issue's
+worker (`POST /api/issues/{id}/pickup`, `POST /api/issues/{id}/drop`), and
+adding a reply to an existing issue (`POST /api/issues/{id}/messages`).
 
 ## Authentication
 
@@ -75,11 +76,11 @@ Success responses are always `{"issues": [...]}` — a single-element array for
       "client_id": 2,
       "queue_id": 44,
       "worker_id": 9,
+      "worked": true,
+      "worked_by_you": false,
       "owner_id": 9,
-      "priority": 2,
-      "priority_label": "Normal",
-      "status": 1,
-      "status_label": "Open",
+      "priority": "Normal",
+      "status": "Open",
       "type": 1,
       "hold_until": null,
       "merged_into": null,
@@ -92,7 +93,17 @@ Success responses are always `{"issues": [...]}` — a single-element array for
 
 Fields referencing other records (`client_id`, `queue_id`, `worker_id`,
 `owner_id`) are raw ids, not resolved names. Timestamps are ISO 8601. Any of
-the id fields, `hold_until`, and `merged_into` may be `null`.
+the id fields, `hold_until`, and `merged_into` may be `null`. `status` and
+`priority` are words (e.g. `"Open"`, `"Fixed"`, `"Critical"`) — there are no
+numeric status/priority ids in the API.
+
+`worked` is an explicit boolean mirroring `worker_id !== null` — someone is
+actively working the issue right now. `worked_by_you` is `true` only when
+that someone is the API key's own user. `worker_id` is not directly settable
+via `PATCH` — see **Picking up and dropping an issue** below, which is the
+only way to change it. Whenever an issue's `status` is changed away from
+`"Open"` (via `PATCH` or `POST .../messages`), `worker_id` is automatically
+cleared, the same as closing a ticket in the web UI.
 
 ### Errors
 
@@ -122,16 +133,18 @@ with the same field names also work.)
 |-------------|---------|----------|---------------------------------------------------------|
 | `issuename` | string  | yes      | Ticket title                                            |
 | `body`      | string  | yes      | Opening message body (HTML allowed)                     |
-| `queueid`   | integer | yes      | Queue to create the ticket in — must be one you can add to |
+| `queueid`   | string  | yes      | Name (case-insensitive) of the queue to create the ticket in — must be one you can add to |
 | `clientid`  | integer | no       | Associate the ticket with a client                      |
-| `priority`  | integer | no       | 1–4 (Low → Critical); defaults to 2 (Medium)            |
+| `priority`  | string  | no       | Priority word (case-insensitive) — Low/Medium/High/Critical; defaults to Medium |
+| `owner`     | string  | no       | Username (case-insensitive) of the case-managing owner  |
 | `tags`      | string  | no       | Comma-separated tags; lowercased and de-duplicated      |
 
-Other fields (`owner`, `worker`, `issuestatus`, `issuetype`, `issuecode`) are
-not settable at creation time — new issues are always created Open, as a
-normal ticket, with a server-generated code. `worker`/`issuestatus` (along
-with `priority`) can be changed afterwards via `PATCH /api/issues` — see
-below.
+Other fields (`worker`, `issuestatus`, `issuetype`, `issuecode`) are not
+settable at creation time — new issues are always created Open, as a normal
+ticket, with a server-generated code. `issuestatus` (along with `priority`
+and `owner`) can be changed afterwards via `PATCH /api/issues` — see below.
+`worker` is set via `POST /api/issues/{id}/pickup`, not at creation time —
+see **Picking up and dropping an issue** below.
 
 ### Response
 
@@ -148,10 +161,8 @@ under a singular `issue` key, in the same shape as a `GET` result element:
     "queue_id": 44,
     "worker_id": null,
     "owner_id": null,
-    "priority": 2,
-    "priority_label": "Medium",
-    "status": 1,
-    "status_label": "Open",
+    "priority": "Medium",
+    "status": "Open",
     "type": 1,
     "hold_until": "2026-07-10T14:10:00+00:00",
     "merged_into": null,
@@ -174,7 +185,7 @@ endpoint:
 
 ## `PATCH /api/issues`
 
-Updates the worker, status and/or priority of an existing issue. (`PUT` is
+Updates the owner, status and/or priority of an existing issue. (`PUT` is
 also accepted as an alias for `PATCH`.) The key's user must have **manage**
 permission on the issue's queue — the same permission that gates the
 status/priority/owner controls in the web UI.
@@ -182,18 +193,21 @@ status/priority/owner controls in the web UI.
 The issue id is passed as the `id` query parameter, e.g.
 `PATCH /api/issues?id=4290`. Fields to change are sent in the request body —
 send a JSON body with `Content-Type: application/json` (form-encoded bodies
-with the same field names also work, except unassigning a worker, which
+with the same field names also work, except unassigning an owner, which
 requires JSON `null` — see below).
 
-| Field       | Type          | Description                                                        |
-|-------------|---------------|----------------------------------------------------------------------|
-| `worker_id` | integer\|null | User id to assign as worker. `null` (JSON only) unassigns the worker |
-| `status`    | integer       | New status — one of the values from the `status`/`status_label` fields on a `GET` response |
-| `priority`  | integer       | New priority — 1–4 (Low → Critical)                                 |
+| Field      | Type         | Description                                                        |
+|------------|--------------|------------------------------------------------------------------------|
+| `status`   | string       | New status word (case-insensitive) — one of the values from the `status` field on a `GET` response, e.g. `"Open"`, `"Fixed"` |
+| `priority` | string       | New priority word (case-insensitive) — Low/Medium/High/Critical     |
+| `owner`    | string\|null | Username (case-insensitive) of the case-managing owner. `null` (JSON only) unassigns the owner |
 
 At least one of the three fields must be present. Only the fields supplied
 are changed; omitted fields are left as-is. Every change is recorded in the
-issue's history, same as an edit made through the web UI.
+issue's history, same as an edit made through the web UI. There is no way to
+(re)assign `worker` via `PATCH` — that's a separate pick-up/drop workflow,
+not a plain reassignment field, described next. Setting `status` to anything
+other than `"Open"` automatically clears `worker_id` if it was set.
 
 ### Response
 
@@ -204,10 +218,76 @@ the same shape as a `GET`/`POST` result.
 
 | Status | Code           | When                                                                 |
 |--------|----------------|------------------------------------------------------------------------|
-| 400    | `bad_request`  | Missing `id`; none of `worker_id`/`status`/`priority` supplied; invalid `worker_id`, `status` or `priority`; invalid JSON body |
+| 400    | `bad_request`  | Missing `id`; none of `status`/`priority`/`owner` supplied; invalid `status`, `priority` or `owner`; invalid JSON body |
 | 401    | `unauthorized` | Missing, invalid, or inactive API key                                |
 | 403    | `forbidden`    | You don't have manage permission on the issue's queue                |
 | 404    | `not_found`    | `id` doesn't exist, or refers to an issue you can't see               |
+
+## Picking up and dropping an issue
+
+`worker_id` tracks who is *actively working* an issue right now, separately
+from `owner_id` (who's case-managing it). Only one user can work an issue at
+a time. If you're building something that acts on a ticket (replying,
+investigating, fixing), pick it up first — this stops someone else picking
+up the same ticket without realizing it's already being handled, and other
+tools/users can see `worked`/`worked_by_you` on a `GET` to know it's spoken
+for.
+
+### `POST /api/issues/{id}/pickup`
+
+Sets `worker_id` to the API key's own user. The key's user only needs
+**view** access to the issue's queue (the same visibility check as `GET`).
+
+If the issue is unworked, or already worked by you, this succeeds
+immediately (repeat calls are safe — picking up your own ticket again is a
+no-op). If it's currently worked by someone else, this fails with `409
+conflict` unless you pass `"steal": true` in the JSON body, in which case
+the key's user additionally needs **steal** permission on the issue's
+queue — the same permission that gates the "Steal" confirmation in the web
+UI. Stealing is meant for recovering a ticket someone picked up and never
+dropped (e.g. they went home), not routine reassignment.
+
+```json
+{"steal": true}
+```
+
+`steal` is optional and defaults to `false`. Omit the body (or send `{}`)
+for a normal pick-up.
+
+#### Response
+
+On success returns `200 OK` with the updated issue under the `issue` key.
+
+#### Errors
+
+| Status | Code           | When                                                                 |
+|--------|----------------|------------------------------------------------------------------------|
+| 400    | `bad_request`  | Missing/invalid `id`; invalid JSON body                              |
+| 401    | `unauthorized` | Missing, invalid, or inactive API key                                |
+| 403    | `forbidden`    | Issue is worked by someone else, `steal` was `true`, but you lack steal permission on the queue |
+| 404    | `not_found`    | `id` doesn't exist, or refers to an issue you can't see               |
+| 409    | `conflict`     | Issue is worked by someone else and `steal` wasn't `true`             |
+
+### `POST /api/issues/{id}/drop`
+
+Clears `worker_id`, releasing the issue for someone else to pick up. No
+request body is needed. If nobody is currently working the issue, this is a
+no-op (`200 OK`, not an error). If someone *else* is working it, this fails
+with `409 conflict` — you can only drop your own pick-up (use `pickup` with
+`steal` if you need to take over from them, then `drop`).
+
+#### Response
+
+On success returns `200 OK` with the updated issue under the `issue` key.
+
+#### Errors
+
+| Status | Code           | When                                                                 |
+|--------|----------------|------------------------------------------------------------------------|
+| 400    | `bad_request`  | Missing/invalid `id`                                                  |
+| 401    | `unauthorized` | Missing, invalid, or inactive API key                                |
+| 404    | `not_found`    | `id` doesn't exist, or refers to an issue you can't see               |
+| 409    | `conflict`     | Issue is currently worked by someone else                             |
 
 ## `POST /api/issues/{id}/messages`
 
@@ -229,8 +309,8 @@ with the same field names also work.)
 | Field      | Type    | Required | Description                                                      |
 |------------|---------|----------|--------------------------------------------------------------------|
 | `body`     | string  | yes      | Reply body (markdown)                                              |
-| `status`   | integer | no       | New status — requires manage permission on the issue's queue       |
-| `queue_id` | integer | no       | Move the issue to this queue — requires manage permission on both the current and target queue |
+| `status`   | string  | no       | New status word (case-insensitive) — requires manage permission on the issue's queue |
+| `queue_id` | string  | no       | Name (case-insensitive) of the queue to move the issue to — requires manage permission on both the current and target queue |
 
 There is no internal/private note flag — every message added this way is
 visible to anyone who can view the issue, including a client-portal user if
@@ -302,28 +382,57 @@ Create a new issue:
 curl -X POST \
   -H "Authorization: Bearer $API_KEY" \
   -H "Content-Type: application/json" \
-  -d '{"issuename":"Printer not working","body":"The printer on floor 2 is jammed.","queueid":44,"priority":3,"tags":"hardware, urgent"}' \
+  -d '{"issuename":"Printer not working","body":"The printer on floor 2 is jammed.","queueid":"Support","priority":"High","tags":"hardware, urgent"}' \
   'https://helpdesk.artumi.com/api/issues'
 ```
 
-Assign a worker, and change status and priority:
+Assign an owner, and change status and priority:
 
 ```bash
 curl -X PATCH \
   -H "Authorization: Bearer $API_KEY" \
   -H "Content-Type: application/json" \
-  -d '{"worker_id":9,"status":2,"priority":4}' \
+  -d '{"owner":"jdoe","status":"Fixed","priority":"Critical"}' \
   'https://helpdesk.artumi.com/api/issues?id=4290'
 ```
 
-Unassign a worker (requires JSON body — `worker_id` set to `null`):
+Unassign an owner (requires JSON body — `owner` set to `null`):
 
 ```bash
 curl -X PATCH \
   -H "Authorization: Bearer $API_KEY" \
   -H "Content-Type: application/json" \
-  -d '{"worker_id":null}' \
+  -d '{"owner":null}' \
   'https://helpdesk.artumi.com/api/issues?id=4290'
+```
+
+Pick up an issue before working on it:
+
+```bash
+curl -X POST \
+  -H "Authorization: Bearer $API_KEY" \
+  'https://helpdesk.artumi.com/api/issues/4290/pickup'
+# 409 conflict if someone else already has it:
+# {"error":{"code":"conflict","message":"Issue is already being worked by another user; retry with steal=true to take it over"}}
+```
+
+Steal an issue someone else picked up and abandoned (requires steal
+permission on the queue):
+
+```bash
+curl -X POST \
+  -H "Authorization: Bearer $API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"steal":true}' \
+  'https://helpdesk.artumi.com/api/issues/4290/pickup'
+```
+
+Drop an issue once you're done (or handing it off):
+
+```bash
+curl -X POST \
+  -H "Authorization: Bearer $API_KEY" \
+  'https://helpdesk.artumi.com/api/issues/4290/drop'
 ```
 
 Add a reply to an issue:
@@ -336,14 +445,14 @@ curl -X POST \
   'https://helpdesk.artumi.com/api/issues/4290/messages'
 ```
 
-Reply and mark the ticket fixed in one call (status `2` = "Fixed" — see the
-`status`/`status_label` fields on a `GET` response for the full list):
+Reply and mark the ticket fixed in one call (see the `status` field on a
+`GET` response for the full list of valid words):
 
 ```bash
 curl -X POST \
   -H "Authorization: Bearer $API_KEY" \
   -H "Content-Type: application/json" \
-  -d '{"body":"Fixed and confirmed working.","status":2}' \
+  -d '{"body":"Fixed and confirmed working.","status":"Fixed"}' \
   'https://helpdesk.artumi.com/api/issues/4290/messages'
 ```
 
