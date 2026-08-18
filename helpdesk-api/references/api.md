@@ -94,8 +94,12 @@ Success responses are always `{"issues": [...]}` — a single-element array for
 Fields referencing other records (`client_id`, `queue_id`, `worker_id`,
 `owner_id`) are raw ids, not resolved names. Timestamps are ISO 8601. Any of
 the id fields, `hold_until`, and `merged_into` may be `null`. `status` and
-`priority` are words (e.g. `"Open"`, `"Fixed"`, `"Critical"`) — there are no
+`priority` are words (e.g. `"Open"`, `"Completed"`, `"Critical"`) — there are no
 numeric status/priority ids in the API.
+
+The status for a successfully dealt-with ticket is `"Completed"`. It was
+formerly called `"Fixed"`; that word has been retired and is no longer a valid
+status value on either read or write.
 
 `worked` is an explicit boolean mirroring `worker_id !== null` — someone is
 actively working the issue right now. `worked_by_you` is `true` only when
@@ -198,7 +202,7 @@ requires JSON `null` — see below).
 
 | Field      | Type         | Description                                                        |
 |------------|--------------|------------------------------------------------------------------------|
-| `status`   | string       | New status word (case-insensitive) — one of the values from the `status` field on a `GET` response, e.g. `"Open"`, `"Fixed"` |
+| `status`   | string       | New status word (case-insensitive) — one of the values from the `status` field on a `GET` response, e.g. `"Open"`, `"Completed"` |
 | `priority` | string       | New priority word (case-insensitive) — Low/Medium/High/Critical     |
 | `owner`    | string\|null | Username (case-insensitive) of the case-managing owner. `null` (JSON only) unassigns the owner |
 
@@ -392,7 +396,7 @@ Assign an owner, and change status and priority:
 curl -X PATCH \
   -H "Authorization: Bearer $API_KEY" \
   -H "Content-Type: application/json" \
-  -d '{"owner":"jdoe","status":"Fixed","priority":"Critical"}' \
+  -d '{"owner":"jdoe","status":"Completed","priority":"Critical"}' \
   'https://helpdesk.artumi.com/api/issues?id=4290'
 ```
 
@@ -445,14 +449,14 @@ curl -X POST \
   'https://helpdesk.artumi.com/api/issues/4290/messages'
 ```
 
-Reply and mark the ticket fixed in one call (see the `status` field on a
+Reply and mark the ticket completed in one call (see the `status` field on a
 `GET` response for the full list of valid words):
 
 ```bash
 curl -X POST \
   -H "Authorization: Bearer $API_KEY" \
   -H "Content-Type: application/json" \
-  -d '{"body":"Fixed and confirmed working.","status":"Fixed"}' \
+  -d '{"body":"Fixed and confirmed working.","status":"Completed"}' \
   'https://helpdesk.artumi.com/api/issues/4290/messages'
 ```
 

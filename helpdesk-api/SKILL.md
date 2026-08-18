@@ -45,6 +45,16 @@ tracker (GitHub issues, Jira, etc.). In that case, don't assume — ask the user
 mean before calling the CLI. Outside such a project (or once the user has said "helpdesk"
 explicitly), it's safe to proceed.
 
+## Status names
+
+The status for a ticket that has been successfully dealt with is **`"Completed"`**. It used to be
+called `"Fixed"` — that word has been retired and is no longer a valid status. If a user says
+"mark it fixed", they mean `--status="Completed"`.
+
+The other statuses are unchanged: `"Open"`, `"Cant fix"`, `"Wont fix"`, `"Wishlist"`,
+`"Duplicate"`, `"Old"`. Statuses are words (case-insensitive), never numeric ids; if you're
+unsure of the exact wording, check the `status` field via `issue view` first.
+
 ## Ticket numbers vs issue ids
 
 Users will refer to tickets by their code (e.g. `ART5123`) or sometimes just the bare number, or
@@ -74,10 +84,10 @@ helpdesk issue comment 4290 --body="Reply text here."
 
 Reply and close/change status in the same call — `--status` is a word (case-insensitive), not a
 number; check the ticket's `status` field via `issue view` first if you're unsure of the exact
-wording (e.g. "Fixed", "Cant fix", "Wont fix", "Wishlist", "Duplicate", "Old"):
+wording (e.g. "Completed", "Cant fix", "Wont fix", "Wishlist", "Duplicate", "Old"):
 
 ```bash
-helpdesk issue comment 4290 --body="Fixed and confirmed working." --status="Fixed"
+helpdesk issue comment 4290 --body="Fixed and confirmed working." --status="Completed"
 ```
 
 `issue comment` also takes `--queue=NAME` to move the ticket to another queue while replying.
@@ -87,7 +97,7 @@ Change status/priority/owner without adding a reply — `--priority` is also a w
 `--remove-owner` to clear the owner:
 
 ```bash
-helpdesk issue edit 4290 --status="Fixed" --priority="Critical" --owner="jdoe"
+helpdesk issue edit 4290 --status="Completed" --priority="Critical" --owner="jdoe"
 ```
 
 Create a new ticket — `--queue` is the queue's name (case-insensitive), not its numeric id:
