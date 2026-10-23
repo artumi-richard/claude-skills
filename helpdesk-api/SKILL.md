@@ -4,7 +4,8 @@ description: >-
   Interact with the live helpdesk.artumi.com ticketing system via the
   `helpdesk` CLI — fetch a ticket/issue by number, list issues for a
   client/queue/tag, pick up/drop a ticket's worker, reply to a ticket, and
-  change its status/priority/owner/queue. Use
+  change its status/priority/owner/queue, or put it on hold / schedule its
+  escalation to Critical (hold and critical dates). Use
   whenever the user references a ticket code like "ART1234" (unambiguous —
   always this system), or explicitly says "helpdesk"/"helpdesk ticket". A
   bare number or the word "ticket"/"issue" alone is NOT enough to trigger
@@ -100,6 +101,20 @@ Change status/priority/owner without adding a reply — `--priority` is also a w
 helpdesk issue edit 4290 --status="Completed" --priority="Critical" --owner="jdoe"
 ```
 
+Hold and critical dates — `--hold-until=DATE` puts a ticket on hold (out of the queue's active
+list) until then; `--critical-at=DATE` escalates it to Critical priority at that time (the
+server's hourly escalation job does this). `--remove-hold` / `--remove-critical` clear them.
+DATE is ISO 8601 (`2026-11-03T09:00:00+00:00`, or offset-less `2026-11-03 09:00`, read as UK
+time) or a `strtotime()` relative expression (`"+2 weeks"`, `"next monday 09:00"`) — but if the
+user names a specific date, pass an explicit one rather than a relative phrase you've had to
+compute. Dates more than **1 year and 1 week** ahead are rejected (400), and a hold date can
+only be set on an Open ticket. `issue view` shows `On hold:` / `Critical:` lines when set:
+
+```bash
+helpdesk issue edit 4290 --hold-until="2026-11-10 09:00" --critical-at="2026-12-01 09:00"
+helpdesk issue edit 4290 --remove-hold
+```
+
 Create a new ticket — `--queue` is the queue's name (case-insensitive), not its numeric id:
 
 ```bash
@@ -107,7 +122,28 @@ helpdesk issue create --title="Title" --body="Opening message" --queue="Support"
 ```
 
 Optional flags on `issue create`: `--client=ID`, `--priority=P`, `--owner=USER`,
-`--tags=a,b`.
+`--tags=a,b`, `--hold-until=DATE`, `--critical-at=DATE`.
+
+List active clients (to find the `--client=ID` for `issue create` / `issue list`), or queues:
+
+```bash
+helpdesk client list
+helpdesk queue list
+```
+
+`issue view` lists each message's attachments (`Attachment: name (size)  /api/attachments/ID`)
+and images in the body (`Image: /api/uploads/attachments/...`, or `Image: /api/messages/ID/images/N` for base64 images stored inline in old HTML messages). To look at one — e.g. a
+screenshot a user attached — download it and then Read the file (images render for you).
+Download into the scratchpad, not the project dir:
+
+```bash
+helpdesk attachment download 5501 --output=/path/to/scratchpad/shot.png
+helpdesk attachment download /api/uploads/attachments/pasted/AbCd.png --output=/path/to/scratchpad/shot.png
+```
+
+`attachment download` also accepts a `/uploads/attachments/...` link copied out of a message
+body. Without `--output` it saves under the uploader's filename in the cwd and refuses to
+overwrite (pass `--force`); `--output=-` writes to stdout.
 
 `worker_id` (who is actively working the ticket right now, distinct from `owner_id` who's
 case-managing it) isn't settable via `issue edit` — it has its own pick-up/drop subcommands:
